@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
 from app.middleware.auth import get_current_user
+from app.models.job import Job
 from app.models.project import Project
 from app.models.uploaded_file import UploadedFile
 from app.models.user import User
@@ -26,9 +27,16 @@ log = structlog.get_logger()
 
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
 
+_PROJECT_LIMIT = 50
 
-def _get_storage() -> LocalDiskBackend:
+
+def _get_upload_storage() -> LocalDiskBackend:
     base = os.getenv("STORAGE_BASE_PATH", "/app/volumes/uploads")
+    return LocalDiskBackend(base)
+
+
+def _get_output_storage() -> LocalDiskBackend:
+    base = os.getenv("OUTPUT_BASE_PATH", "/app/volumes/outputs")
     return LocalDiskBackend(base)
 
 
@@ -77,10 +85,11 @@ async def get_project(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(Project).where(Project.id == project_id))
+    result = await db.execute(
+        select(Project).where(Project.id == project_id, Project.user_id == current_user.id)
+    )
     project = result.scalar_one_or_none()
-
-    if project is None or project.user_id != current_user.id:
+    if project is None:
         raise _not_found()
 
     return ProjectResponse.model_validate(project)
@@ -92,6 +101,25 @@ async def create_project(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    # Lock the user row for the duration of this transaction so that concurrent
+    # project-creation requests for the same user are serialized. This is the same
+    # strategy used for quota enforcement in the jobs router: one winner holds the
+    # lock; others wait and then see the updated count when they acquire it.
+    await db.execute(
+        select(User).where(User.id == current_user.id).with_for_update()
+    )
+    count_result = await db.execute(
+        select(func.count()).select_from(Project).where(Project.user_id == current_user.id)
+    )
+    if count_result.scalar_one() >= _PROJECT_LIMIT:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={
+                "error": "project_limit_reached",
+                "message": f"Project limit of {_PROJECT_LIMIT} reached. Delete an existing project to create a new one.",
+            },
+        )
+
     if body.source_file_id is not None:
         file_result = await db.execute(
             select(UploadedFile).where(UploadedFile.id == body.source_file_id)
@@ -125,10 +153,11 @@ async def update_project(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(Project).where(Project.id == project_id))
+    result = await db.execute(
+        select(Project).where(Project.id == project_id, Project.user_id == current_user.id)
+    )
     project = result.scalar_one_or_none()
-
-    if project is None or project.user_id != current_user.id:
+    if project is None:
         raise _not_found()
 
     changed = False
@@ -154,43 +183,96 @@ async def delete_project(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(Project).where(Project.id == project_id))
+    result = await db.execute(
+        select(Project).where(Project.id == project_id, Project.user_id == current_user.id)
+    )
     project = result.scalar_one_or_none()
-
-    if project is None or project.user_id != current_user.id:
+    if project is None:
         raise _not_found()
 
-    # Capture source file details before deletion — the FK is SET NULL so
-    # deleting the project does not cascade to uploaded_files.
-    source_file_storage_key: str | None = None
+    # Issue 3: block deletion while any job is still actively running
+    active_jobs_result = await db.execute(
+        select(func.count())
+        .select_from(Job)
+        .where(
+            Job.project_id == project_id,
+            Job.status.in_(["queued", "processing"]),
+        )
+    )
+    if active_jobs_result.scalar_one() > 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "error": "render_in_progress",
+                "message": "A render is still in progress. Wait for it to finish before deleting this project.",
+            },
+        )
+
+    # Issue 1: collect output keys from all jobs before the cascade removes them
+    output_keys_result = await db.execute(
+        select(Job.id, Job.output_key).where(
+            Job.project_id == project_id,
+            Job.output_key.is_not(None),
+        )
+    )
+    output_job_pairs = [(str(row[0]), row[1]) for row in output_keys_result.all()]
+
+    # Issue 2 + original: decide whether source file is safe to delete.
+    # The FK is SET NULL so the project delete will not cascade to uploaded_files.
+    # Only delete the source file if no other project owned by this user references it.
     source_file_record: UploadedFile | None = None
+    delete_source_file = False
     if project.source_file_id is not None:
         file_result = await db.execute(
             select(UploadedFile).where(UploadedFile.id == project.source_file_id)
         )
         source_file_record = file_result.scalar_one_or_none()
-        if source_file_record is not None:
-            source_file_storage_key = source_file_record.storage_key
 
-    # Delete project (cascades jobs via ON DELETE CASCADE in the DB)
+        if source_file_record is not None:
+            other_ref_result = await db.execute(
+                select(func.count())
+                .select_from(Project)
+                .where(
+                    Project.source_file_id == project.source_file_id,
+                    Project.user_id == current_user.id,
+                    Project.id != project_id,
+                )
+            )
+            delete_source_file = other_ref_result.scalar_one() == 0
+
+    # Delete project — cascades to jobs via ON DELETE CASCADE in the DB
     await db.delete(project)
 
-    # Explicitly delete the uploaded_file record — FK is SET NULL so it won't cascade
-    if source_file_record is not None:
+    # Explicitly delete the uploaded_file record only when no other project shares it
+    if delete_source_file and source_file_record is not None:
         await db.delete(source_file_record)
 
     await db.commit()
 
-    # Remove the file from disk only after the DB commit succeeds
-    if source_file_storage_key is not None:
-        storage = _get_storage()
+    # Remove source file from disk only when it was safe to delete and the DB commit succeeded
+    if delete_source_file and source_file_record is not None:
+        upload_storage = _get_upload_storage()
         try:
-            await storage.delete(source_file_storage_key)
+            await upload_storage.delete(source_file_record.storage_key)
         except Exception:
+            # Issue 4: never log the storage key — log only the project_id
             log.warning(
-                "storage_delete_failed_after_db_commit",
+                "source_file_disk_delete_failed",
                 project_id=str(project_id),
-                storage_key=source_file_storage_key,
             )
+
+    # Issue 1: remove output files for every completed job under this project
+    if output_job_pairs:
+        output_storage = _get_output_storage()
+        for job_id_str, output_key in output_job_pairs:
+            try:
+                await output_storage.delete(output_key)
+            except Exception:
+                # Issue 4: never log the output key — log only the job_id
+                log.warning(
+                    "output_file_disk_delete_failed",
+                    job_id=job_id_str,
+                    project_id=str(project_id),
+                )
 
     log.info("project_deleted", project_id=str(project_id), user_id=str(current_user.id))

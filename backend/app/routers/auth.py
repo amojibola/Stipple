@@ -1,9 +1,11 @@
 import hashlib
 import os
+import uuid
 from datetime import datetime, timedelta, timezone
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.responses import JSONResponse
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -217,21 +219,43 @@ async def login(
 async def refresh(
     request: Request,
     response: Response,
+    db: AsyncSession = Depends(get_db),
     redis=Depends(get_redis_auth),
 ):
+    # All 401 exits return a JSONResponse directly so that _clear_auth_cookies
+    # can set headers on the same object being returned — raising HTTPException
+    # would create a new response via the exception handler and drop the cookies.
     raw_refresh = request.cookies.get("refresh_token")
     if not raw_refresh:
-        raise HTTPException(
+        resp = JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"error": "unauthorized", "message": "Refresh token missing"},
+            content={"error": "unauthorized", "message": "Refresh token missing"},
         )
+        _clear_auth_cookies(resp)
+        return resp
 
     user_id = await validate_refresh_token(redis, raw_refresh)
     if not user_id:
-        raise HTTPException(
+        resp = JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"error": "invalid_token", "message": "Refresh token is invalid or expired"},
+            content={"error": "invalid_token", "message": "Refresh token is invalid or expired"},
         )
+        _clear_auth_cookies(resp)
+        return resp
+
+    # Verify the user still exists and is active before issuing a new token
+    user_result = await db.execute(
+        select(User).where(User.id == uuid.UUID(user_id))
+    )
+    db_user = user_result.scalar_one_or_none()
+    if db_user is None or not db_user.is_active:
+        await invalidate_refresh_token(redis, raw_refresh)
+        resp = JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={"error": "unauthorized", "message": "Authentication required"},
+        )
+        _clear_auth_cookies(resp)
+        return resp
 
     new_raw, _ = await rotate_refresh_token(redis, raw_refresh, user_id)
     new_access = create_access_token(user_id)

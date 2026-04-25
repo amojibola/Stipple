@@ -105,6 +105,7 @@ export default function DashboardPage() {
 
   const [user, setUser] = useState<UserProfile | null>(null);
   const [quota, setQuota] = useState<QuotaResponse | null>(null);
+  const [quotaError, setQuotaError] = useState(false);
 
   const [confirmDelete, setConfirmDelete] = useState<Project | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -129,7 +130,7 @@ export default function DashboardPage() {
   useEffect(() => {
     loadProjects(1);
     api.users.me().then(setUser).catch(() => null);
-    api.users.quota().then(setQuota).catch(() => null);
+    api.users.quota().then(setQuota).catch(() => setQuotaError(true));
   }, [loadProjects]);
 
   const handleDeleteConfirm = useCallback(async () => {
@@ -169,7 +170,12 @@ export default function DashboardPage() {
 
       <main className="max-w-5xl mx-auto px-6 py-8">
         {/* Quota bar */}
-        {quota && (
+        {quotaError && (
+          <div className="mb-6 bg-white rounded-xl border border-gray-200 px-5 py-4 text-sm text-gray-400">
+            Quota information unavailable
+          </div>
+        )}
+        {!quotaError && quota && (
           <div className="mb-6 bg-white rounded-xl border border-gray-200 px-5 py-4 flex flex-wrap gap-6 text-sm text-gray-600">
             <span>
               Daily renders:{" "}
