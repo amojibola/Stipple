@@ -74,6 +74,76 @@ export interface UploadedFile {
   uploaded_at: string;
 }
 
+export interface StippleParams {
+  dot_size: number;
+  density: number;
+  black_point: number;
+  highlights: number;
+  shadow_depth: number;
+}
+
+export interface JobCreateResponse {
+  job_id: string;
+}
+
+export interface JobStatusResponse {
+  job_id: string;
+  status: string;
+  queued_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  duration_ms: number | null;
+  error_message: string | null;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  source_file_id: string | null;
+  parameters: StippleParams | Record<string, unknown>;
+  status: "draft" | "processing" | "ready" | "failed";
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProjectListResponse {
+  items: Project[];
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
+}
+
+export interface ProjectCreateRequest {
+  name: string;
+  source_file_id?: string;
+  parameters?: StippleParams;
+}
+
+export interface ProjectUpdateRequest {
+  name?: string;
+  parameters?: StippleParams;
+}
+
+export interface UserProfile {
+  id: string;
+  email: string;
+  is_verified: boolean;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface QuotaResponse {
+  renders_today: number;
+  renders_this_month: number;
+  daily_limit: number;
+  monthly_limit: number;
+  day_reset_at: string;
+  month_reset_at: string;
+  updated_at: string;
+}
+
 export const api = {
   auth: {
     register: (email: string, password: string) =>
@@ -129,5 +199,100 @@ export const api = {
       }),
 
     getUrl: (fileId: string) => `${API_BASE}/images/${fileId}`,
+
+    preview: async (fileId: string, params: StippleParams): Promise<Blob> => {
+      const res = await fetch(`${API_BASE}/images/${fileId}/preview`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(params),
+      });
+      if (!res.ok) {
+        let code = "preview_failed";
+        let message = "Preview generation failed";
+        try {
+          const body = await res.json();
+          code = body.error ?? code;
+          message = body.message ?? message;
+        } catch { /* ignore */ }
+        throw new ApiError(res.status, code, message);
+      }
+      return res.blob();
+    },
+  },
+
+  jobs: {
+    create: (sourceFileId: string, parameters: StippleParams) =>
+      request<JobCreateResponse>("/jobs", {
+        method: "POST",
+        body: JSON.stringify({ source_file_id: sourceFileId, parameters }),
+      }),
+
+    getStatus: (jobId: string) =>
+      request<JobStatusResponse>(`/jobs/${jobId}/status`),
+
+    downloadResult: async (jobId: string): Promise<void> => {
+      const res = await fetch(`${API_BASE}/jobs/${jobId}/result`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new ApiError(res.status, "download_failed", "Download failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `stipple_${jobId}.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    },
+  },
+
+  projects: {
+    list: (page = 1, limit = 20) =>
+      request<ProjectListResponse>(`/projects?page=${page}&limit=${limit}`),
+
+    get: (projectId: string) =>
+      request<Project>(`/projects/${projectId}`),
+
+    create: (body: ProjectCreateRequest) =>
+      request<Project>("/projects", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+
+    update: (projectId: string, body: ProjectUpdateRequest) =>
+      request<Project>(`/projects/${projectId}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+
+    delete: (projectId: string) =>
+      fetch(`${API_BASE}/projects/${projectId}`, {
+        method: "DELETE",
+        credentials: "include",
+      }).then((res) => {
+        if (!res.ok) throw new ApiError(res.status, "delete_failed", "Delete failed");
+      }),
+  },
+
+  users: {
+    me: () => request<UserProfile>("/users/me"),
+
+    updateMe: (body: { email?: string }) =>
+      request<UserProfile>("/users/me", {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+
+    deleteMe: () =>
+      fetch(`${API_BASE}/users/me`, {
+        method: "DELETE",
+        credentials: "include",
+      }).then((res) => {
+        if (!res.ok) throw new ApiError(res.status, "delete_failed", "Delete failed");
+      }),
+
+    quota: () => request<QuotaResponse>("/users/me/quota"),
   },
 };

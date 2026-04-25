@@ -1,6 +1,5 @@
 import os
 from contextlib import asynccontextmanager
-from concurrent.futures import ProcessPoolExecutor
 
 import structlog
 from fastapi import FastAPI, HTTPException
@@ -11,7 +10,8 @@ from sqlalchemy import select, literal
 import redis.asyncio as aioredis
 
 from app.db import engine
-from app.routers import auth, users, projects, images
+from app.process_pool import init_process_pool, shutdown_process_pool, get_process_pool as _get_pool
+from app.routers import auth, users, projects, images, jobs
 
 structlog.configure(
     processors=[
@@ -24,19 +24,9 @@ structlog.configure(
 
 log = structlog.get_logger()
 
-_process_pool: ProcessPoolExecutor | None = None
-
-
-def get_process_pool() -> ProcessPoolExecutor:
-    if _process_pool is None:
-        raise RuntimeError("Process pool accessed before application startup")
-    return _process_pool
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _process_pool
-
     # Fail fast at startup if JWT keys are missing or undecodable — not at first login.
     from app.services.auth import _get_private_key, _get_public_key
     try:
@@ -45,9 +35,9 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         raise RuntimeError(f"JWT key configuration error at startup: {exc}") from exc
 
-    _process_pool = ProcessPoolExecutor(max_workers=4)
+    init_process_pool(max_workers=4)
     yield
-    _process_pool.shutdown(wait=True)
+    shutdown_process_pool()
 
 
 app = FastAPI(
@@ -70,6 +60,7 @@ app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(projects.router)
 app.include_router(images.router)
+app.include_router(jobs.router)
 
 
 @app.exception_handler(RequestValidationError)
@@ -98,6 +89,14 @@ async def generic_exception_handler(request, exc: Exception):
         status_code=500,
         content={"error": "internal_error", "message": "An internal error occurred"},
     )
+
+
+def _pool_ok() -> bool:
+    try:
+        _get_pool()
+        return True
+    except RuntimeError:
+        return False
 
 
 async def _check_db() -> str:
@@ -140,5 +139,5 @@ async def health_detailed():
         "status": overall,
         "db": db_status,
         "redis": redis_status,
-        "process_pool": "ok" if _process_pool is not None else "not_started",
+        "process_pool": "ok" if _pool_ok() else "not_started",
     }

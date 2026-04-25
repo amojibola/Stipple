@@ -31,6 +31,25 @@ def validate_and_load(source_path: str) -> np.ndarray:
         return cv2.cvtColor(np.array(img.convert("RGB")), cv2.COLOR_RGB2GRAY)
 
 
+def load_for_preview(source_path: str, preview_width: int) -> np.ndarray:
+    """Load and resize image to preview_width before numpy conversion.
+
+    PIL thumbnail resizes in-place before any large array is created, keeping
+    memory proportional to the preview size rather than the source size.
+    """
+    with Image.open(source_path) as img:
+        w, h = img.size
+        if w > MAX_DIMENSION or h > MAX_DIMENSION:
+            raise ValueError(f"Image {w}x{h} exceeds max {MAX_DIMENSION}px per side")
+        mp = (w * h) / 1_000_000
+        if mp > 8.0:
+            raise ValueError(f"Image is {mp:.1f}MP, max is 8MP")
+        preview_height = max(1, int(preview_width * h / w))
+        img.thumbnail((preview_width, preview_height), Image.LANCZOS)
+        img.load()  # triggers decompression bomb check on the resized image
+        return cv2.cvtColor(np.array(img.convert("RGB")), cv2.COLOR_RGB2GRAY)
+
+
 def compute_seed(file_id: str, params: dict) -> int:
     raw = file_id + json.dumps(params, sort_keys=True)
     return int(hashlib.sha256(raw.encode()).hexdigest()[:8], 16)
@@ -45,18 +64,8 @@ def _validate_params(params: dict) -> None:
             raise ValueError(f"{key}={val} is outside allowed range [{lo}, {hi}]")
 
 
-def stipple_image(
-    source_path: str,
-    params: dict,
-    output_size: tuple,
-    seed: int,
-) -> np.ndarray:
-    _validate_params(params)
-
-    rng = np.random.default_rng(seed)
-
-    gray = validate_and_load(source_path)
-    gray = cv2.resize(gray, output_size, interpolation=cv2.INTER_AREA)
+def _apply_stipple_effect(gray: np.ndarray, params: dict, rng: np.random.Generator) -> np.ndarray:
+    """Apply the stipple dot effect to a grayscale image already at output size."""
     img_norm = gray.astype(np.float32) / 255.0
 
     dot_size = params["dot_size"]
@@ -71,8 +80,8 @@ def stipple_image(
     img_mapped = img_mapped + highlights * (1.0 - img_mapped) ** 2
     img_mapped = np.clip(img_mapped, 0.0, 1.0)
 
+    h, w = gray.shape[:2]
     step = max(1, int(dot_size * 2 / density))
-    h, w = output_size[1], output_size[0]
 
     ys = np.arange(0, h, step)
     xs = np.arange(0, w, step)
@@ -118,3 +127,31 @@ def stipple_image(
         canvas[dilated > 0] = [0, 0, 0]
 
     return canvas
+
+
+def stipple_image(
+    source_path: str,
+    params: dict,
+    output_size: tuple,
+    seed: int,
+) -> np.ndarray:
+    """Full-resolution stipple render. Used by the Celery worker."""
+    _validate_params(params)
+    rng = np.random.default_rng(seed)
+    gray = validate_and_load(source_path)
+    gray = cv2.resize(gray, output_size, interpolation=cv2.INTER_AREA)
+    return _apply_stipple_effect(gray, params, rng)
+
+
+def stipple_preview_image(
+    source_path: str,
+    params: dict,
+    preview_width: int,
+    seed: int,
+) -> np.ndarray:
+    """Preview stipple render. Resizes the source to preview_width before any
+    numpy allocation, keeping memory proportional to the preview size."""
+    _validate_params(params)
+    rng = np.random.default_rng(seed)
+    gray = load_for_preview(source_path, preview_width)
+    return _apply_stipple_effect(gray, params, rng)

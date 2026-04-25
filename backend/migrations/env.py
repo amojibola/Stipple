@@ -16,6 +16,8 @@ from app.models.user import User  # noqa: F401
 from app.models.email_token import EmailToken  # noqa: F401
 from app.models.user_quota import UserQuota  # noqa: F401
 from app.models.uploaded_file import UploadedFile  # noqa: F401
+from app.models.project import Project  # noqa: F401
+from app.models.job import Job  # noqa: F401
 
 config = context.config
 

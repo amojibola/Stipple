@@ -1,20 +1,26 @@
+import asyncio
 import hashlib
+import json
 import os
 import uuid
 import io
 
+import cv2
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from PIL import Image
+import redis.asyncio as aioredis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
+from app.process_pool import get_process_pool, get_preview_semaphore
 from app.middleware.auth import get_current_user
 from app.models.uploaded_file import UploadedFile
 from app.models.user import User
-from app.schemas.images import FileUploadResponse
+from app.schemas.images import FileUploadResponse, StippleParams
+from app.services.stipple import compute_seed, stipple_preview_image
 from app.services.storage import LocalDiskBackend
 
 # Module-level — must be set before any Image.open() call
@@ -25,6 +31,8 @@ MAX_DIMENSION = 4000
 MAX_MEGAPIXELS = 8.0
 
 log = structlog.get_logger()
+
+_PREVIEW_TTL = 3600
 
 router = APIRouter(prefix="/api/v1/images", tags=["images"])
 
@@ -224,3 +232,89 @@ async def get_image(
             "Cache-Control": "private, no-store",
         },
     )
+
+
+@router.post("/{file_id}/preview")
+async def preview_image(
+    file_id: uuid.UUID,
+    params: StippleParams,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(UploadedFile).where(UploadedFile.id == file_id)
+    )
+    record = result.scalar_one_or_none()
+
+    if record is None or record.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "not_found", "message": "File not found"},
+        )
+
+    params_dict = params.model_dump()
+
+    # Round floats to 2 dp before hashing so parameter variations that produce
+    # identical output share the same cache entry instead of creating unique entries.
+    params_for_cache = {
+        k: round(v, 2) if isinstance(v, float) else v
+        for k, v in params_dict.items()
+    }
+    params_hash = hashlib.sha256(
+        json.dumps(params_for_cache, sort_keys=True).encode()
+    ).hexdigest()[:16]
+    cache_key = f"preview:{record.original_sha256}:{params_hash}"
+
+    redis_url = os.getenv("REDIS_CACHE_URL")
+    redis_client = aioredis.from_url(redis_url, decode_responses=False)
+    try:
+        # Cache read is best-effort — Redis unavailability must not block preview generation
+        cached = None
+        try:
+            cached = await redis_client.get(cache_key)
+        except Exception:
+            log.warning("preview_cache_read_failed", file_id=str(file_id))
+
+        if cached is not None:
+            log.info("preview_cache_hit", file_id=str(file_id))
+            return Response(content=cached, media_type="image/png")
+
+        storage = _get_storage()
+        source_path = storage.resolve_path(record.storage_key)
+
+        preview_width = 400
+        seed = compute_seed(str(file_id), params_dict)
+        pool = get_process_pool()
+        loop = asyncio.get_event_loop()
+
+        semaphore = get_preview_semaphore()
+        # locked() returns True when every permit is held (all workers busy).
+        # Checked and acted on before any await — no context switch can occur
+        # between the check and the acquire, so this is safe in asyncio.
+        if semaphore.locked():
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={"error": "service_unavailable", "message": "Preview workers are busy, try again shortly"},
+            )
+        await semaphore.acquire()
+        try:
+            canvas = await loop.run_in_executor(
+                pool, stipple_preview_image, source_path, params_dict, preview_width, seed
+            )
+        finally:
+            semaphore.release()
+
+        _, buf = cv2.imencode(".png", canvas)
+        png_bytes = bytes(buf)
+
+        # Cache write is best-effort — failure must not prevent returning the preview
+        try:
+            await redis_client.setex(cache_key, _PREVIEW_TTL, png_bytes)
+        except Exception:
+            log.warning("preview_cache_write_failed", file_id=str(file_id))
+
+        log.info("preview_generated", file_id=str(file_id))
+
+        return Response(content=png_bytes, media_type="image/png")
+    finally:
+        await redis_client.aclose()

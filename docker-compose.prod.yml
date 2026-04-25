@@ -36,6 +36,12 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    # noeviction is required for DB1 (auth tokens / rate-limit counters).
+    # Redis Community Edition does not support per-database eviction policies,
+    # so allkeys-lru cannot be applied only to DB2 (preview cache).
+    # All DB2 preview cache keys carry an explicit 3600 s TTL so they expire
+    # naturally. Monitor Redis memory and raise --maxmemory if the 1-hour TTL
+    # window produces more cache entries than the memory limit can hold.
     command: >
       redis-server
       --requirepass ${REDIS_PASSWORD}
