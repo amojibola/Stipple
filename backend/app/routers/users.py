@@ -2,10 +2,12 @@ import os
 import uuid
 from datetime import datetime, timezone
 
+import redis.asyncio as aioredis
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
@@ -44,17 +46,27 @@ async def update_me(
     db: AsyncSession = Depends(get_db),
 ):
     if body.email is not None:
+        normalized_email = body.email.strip().lower()
         existing = await db.execute(
-            select(User).where(User.email == body.email, User.id != current_user.id)
+            select(User).where(User.email == normalized_email, User.id != current_user.id)
         )
         if existing.scalar_one_or_none() is not None:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail={"error": "email_taken", "message": "Email address already in use"},
             )
-        current_user.email = body.email
+        current_user.email = normalized_email
         current_user.updated_at = datetime.now(timezone.utc)
-        await db.commit()
+        # Issue 8: catch the unique constraint violation that can slip through
+        # the pre-check under concurrent requests and return a clean 409
+        try:
+            await db.commit()
+        except IntegrityError:
+            await db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"error": "email_taken", "message": "Email address already in use"},
+            )
         await db.refresh(current_user)
 
     return UserResponse.model_validate(current_user)
@@ -66,8 +78,9 @@ async def delete_me(
     db: AsyncSession = Depends(get_db),
 ):
     user_id = current_user.id
+    user_id_str = str(user_id)
 
-    # Collect all storage keys before deletion so we can remove files from disk
+    # Collect storage keys before deletion — DB cascade will remove the rows
     upload_keys_result = await db.execute(
         select(UploadedFile.storage_key).where(UploadedFile.user_id == user_id)
     )
@@ -81,27 +94,59 @@ async def delete_me(
     )
     output_keys = [row[0] for row in output_keys_result.all()]
 
+    # Revoke all active refresh tokens for this user from Redis DB1 (REDIS_AUTH_URL).
+    # DB1 is the auth-only database (noeviction policy) — never use the broker (DB0)
+    # or cache (DB2) URL here. Refresh tokens are stored as refresh:{sha256_hash}
+    # with the value set to the user_id string; scan and delete all matching keys.
+    redis_url = os.getenv("REDIS_AUTH_URL")
+    if redis_url:
+        try:
+            redis_client = aioredis.from_url(redis_url, decode_responses=True)
+            try:
+                keys_to_delete = []
+                async for key in redis_client.scan_iter("refresh:*"):
+                    value = await redis_client.get(key)
+                    if value == user_id_str:
+                        keys_to_delete.append(key)
+                if keys_to_delete:
+                    await redis_client.delete(*keys_to_delete)
+            finally:
+                await redis_client.aclose()
+        except Exception:
+            log.warning("refresh_token_revocation_failed_on_user_delete", user_id=user_id_str)
+
     # Delete user — cascades to projects, jobs, uploaded_files, user_quotas, email_tokens
     await db.delete(current_user)
     await db.commit()
 
-    log.info("user_deleted", user_id=str(user_id))
+    log.info("user_deleted", user_id=user_id_str)
 
     # Remove disk files after DB commit (best-effort)
     upload_storage = _get_upload_storage()
     output_storage = _get_output_storage()
+    cleanup_fail_count = 0
 
-    for key in upload_keys:
+    for _key in upload_keys:
         try:
-            await upload_storage.delete(key)
+            await upload_storage.delete(_key)
         except Exception:
-            log.warning("storage_delete_failed_on_user_delete", storage_key=key)
+            # Issue 4: never log the storage key
+            cleanup_fail_count += 1
 
-    for key in output_keys:
+    for _key in output_keys:
         try:
-            await output_storage.delete(key)
+            await output_storage.delete(_key)
         except Exception:
-            log.warning("output_delete_failed_on_user_delete", storage_key=key)
+            # Issue 4: never log the output key
+            cleanup_fail_count += 1
+
+    # Issue 6: emit a single structured audit event when any disk cleanup fails
+    if cleanup_fail_count > 0:
+        log.warning(
+            "user_deletion_cleanup_incomplete",
+            user_id=user_id_str,
+            failed_file_count=cleanup_fail_count,
+        )
 
 
 @router.get("/me/quota", response_model=QuotaResponse)

@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ProjectCreateRequest(BaseModel):
@@ -12,6 +12,8 @@ class ProjectCreateRequest(BaseModel):
 
 
 class ProjectUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     name: Optional[Annotated[str, Field(min_length=1, max_length=255)]] = None
     parameters: Optional[dict] = None
 

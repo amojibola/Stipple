@@ -1,8 +1,8 @@
 import uuid
 from datetime import date, datetime
-from typing import Annotated, Optional
+from typing import Optional
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr
 
 
 class UserResponse(BaseModel):
@@ -17,7 +17,9 @@ class UserResponse(BaseModel):
 
 
 class UserUpdateRequest(BaseModel):
-    email: Optional[Annotated[str, Field(max_length=255)]] = None
+    model_config = ConfigDict(extra="forbid")
+
+    email: Optional[EmailStr] = None
 
 
 class QuotaResponse(BaseModel):
