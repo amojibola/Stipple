@@ -1,9 +1,9 @@
-Last updated: April 24 2026
+Last updated: April 27 2026
 
 Current status
-Layer 5 is complete and fully audited across two rounds.
+Layer 6 is complete and fully audited across two rounds.
 Production readiness score 8 out of 10. Ready to begin
-Layer 6.
+Layer 7.
 
 Next action
 Open a new Claude Code session, paste the full briefing
@@ -18,44 +18,37 @@ Layer 2 - Authentication            COMPLETE AND AUDITED - April 23 2026
 Layer 3 - File Upload and Storage   COMPLETE AND AUDITED - April 23 2026
 Layer 4 - Image Processing          COMPLETE AND AUDITED - April 24 2026
 Layer 5 - Projects and Dashboard    COMPLETE AND AUDITED - April 24 2026
-Layer 6 - Security Hardening        IN PROGRESS
-Layer 7 - Deployment to Hostinger   pending
+Layer 6 - Security Hardening        COMPLETE AND AUDITED - April 27 2026
+Layer 7 - Deployment to Hostinger   IN PROGRESS
 
 ---
 
 What each layer builds
 
 Layer 1 - Foundation
-All containers, infrastructure, and project skeleton. No
-features. Just the foundation everything else is built on.
+All containers, infrastructure, and project skeleton.
 
 Layer 2 - Authentication
 User accounts, login, logout, email verification, password
-reset, and session management. The gate that protects
-everything else.
+reset, and session management.
 
 Layer 3 - File Upload and Storage
-The ability to upload images safely. File type checking,
-size limits, dimension limits, and the storage system that
-keeps files organised and protected.
+Safe image uploads with file type checking, size limits,
+dimension limits, and protected storage.
 
 Layer 4 - Image Processing
-The actual product. The stipple algorithm, the preview
-system, the full render pipeline, and the background job
-system.
+The stipple algorithm, preview system, full render pipeline,
+and background job system.
 
 Layer 5 - Projects and Dashboard
-Saving and managing work. The dashboard where users see
-their projects, create new ones, and manage existing ones.
+Project management, dashboard, and user account management.
 
 Layer 6 - Security Hardening
-All security controls fully active and verified. Rate
-limiting, audit logging, security headers confirmed, and
-a full security review of everything built so far.
+All security controls verified and strengthened. Audit
+logging, rate limiting, health monitoring, log rotation.
 
 Layer 7 - Deployment to Hostinger
-Moving the app from local development to the live
-production server. TLS certificates, production
+Moving the app to a live server with HTTPS, production
 configuration, and final smoke testing.
 
 ---

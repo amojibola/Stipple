@@ -1,3 +1,4 @@
+import asyncio
 import os
 from contextlib import asynccontextmanager
 
@@ -13,12 +14,13 @@ from app.db import engine
 from app.process_pool import init_process_pool, shutdown_process_pool, get_process_pool as _get_pool
 from app.routers import auth, users, projects, images, jobs
 
+_is_production = os.getenv("ENVIRONMENT") == "production"
 structlog.configure(
     processors=[
         structlog.processors.TimeStamper(fmt="iso"),
         structlog.processors.add_log_level,
         structlog.processors.StackInfoRenderer(),
-        structlog.dev.ConsoleRenderer(),
+        structlog.processors.JSONRenderer() if _is_production else structlog.dev.ConsoleRenderer(),
     ],
 )
 
@@ -113,7 +115,7 @@ async def _check_redis() -> str:
     if not url:
         return "error"
     try:
-        client = aioredis.from_url(url, socket_connect_timeout=2)
+        client = aioredis.from_url(url, socket_connect_timeout=2, socket_timeout=2)
         await client.ping()
         await client.aclose()
         return "ok"
@@ -121,10 +123,43 @@ async def _check_redis() -> str:
         return "error"
 
 
+async def _check_celery() -> str:
+    from app.worker import celery_app
+    try:
+        loop = asyncio.get_event_loop()
+        result = await asyncio.wait_for(
+            loop.run_in_executor(None, lambda: celery_app.control.inspect(timeout=2).ping()),
+            timeout=3.0,
+        )
+        return "ok" if result else "error"
+    except Exception:
+        return "error"
+
+
+async def _check_redis_memory() -> dict:
+    url = os.getenv("REDIS_BROKER_URL")
+    if not url:
+        return {"status": "error"}
+    try:
+        client = aioredis.from_url(url, socket_connect_timeout=2, socket_timeout=2)
+        info = await client.info("memory")
+        await client.aclose()
+        used = info.get("used_memory", 0)
+        maxmem = info.get("maxmemory", 0)
+        if maxmem > 0:
+            pct = round(used / maxmem * 100, 1)
+            if pct > 90:
+                log.warning("redis_memory_high", pct=pct)
+            return {"status": "ok", "used_bytes": used, "maxmemory_bytes": maxmem, "pct_used": pct}
+        log.warning("redis_maxmemory_not_configured")
+        return {"status": "warning", "used_bytes": used, "maxmemory_bytes": "unlimited", "warning": "maxmemory not configured"}
+    except Exception:
+        return {"status": "error"}
+
+
 @app.get("/api/v1/health", tags=["health"])
 async def health():
-    db_status = await _check_db()
-    redis_status = await _check_redis()
+    db_status, redis_status = await asyncio.gather(_check_db(), _check_redis())
     overall = "ok" if db_status == "ok" and redis_status == "ok" else "degraded"
     return {"status": overall, "db": db_status, "redis": redis_status}
 
@@ -132,12 +167,15 @@ async def health():
 @app.get("/api/v1/health/detailed", tags=["health"])
 async def health_detailed():
     # Nginx blocks this location from public access.
-    db_status = await _check_db()
-    redis_status = await _check_redis()
-    overall = "ok" if db_status == "ok" and redis_status == "ok" else "degraded"
+    db_status, redis_status, celery_status, redis_memory = await asyncio.gather(
+        _check_db(), _check_redis(), _check_celery(), _check_redis_memory()
+    )
+    overall = "ok" if db_status == "ok" and redis_status == "ok" and celery_status == "ok" else "degraded"
     return {
         "status": overall,
         "db": db_status,
         "redis": redis_status,
+        "celery": celery_status,
+        "redis_memory": redis_memory,
         "process_pool": "ok" if _pool_ok() else "not_started",
     }
