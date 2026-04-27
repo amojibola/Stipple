@@ -4,11 +4,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, StippleParams, UploadedFile } from "@/lib/api";
 
 const DEFAULT_PARAMS: StippleParams = {
-  dot_size: 2.0,
-  density: 0.5,
-  black_point: 10,
-  highlights: 0.3,
-  shadow_depth: 0.5,
+  dot_size: 2.5,
+  density: 0.7,
+  black_point: 15,
+  highlights: 0.25,
+  shadow_depth: 0.6,
 };
 
 type UploadState =
