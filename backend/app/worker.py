@@ -30,6 +30,7 @@ celery_app.conf.update(
         "app.tasks.process_full_render": {"queue": "render"},
         "app.tasks.cleanup_orphan_files": {"queue": "maintenance"},
         "app.tasks.cleanup_expired_outputs": {"queue": "maintenance"},
+        "app.tasks.cleanup_old_audit_logs": {"queue": "maintenance"},
     },
     beat_schedule={
         "cleanup-orphan-files": {
@@ -39,6 +40,10 @@ celery_app.conf.update(
         "cleanup-expired-outputs": {
             "task": "app.tasks.cleanup_expired_outputs",
             "schedule": crontab(hour=3, minute=30),
+        },
+        "cleanup-old-audit-logs": {
+            "task": "app.tasks.cleanup_old_audit_logs",
+            "schedule": crontab(hour=4, minute=0, day_of_week=0),
         },
     },
 )

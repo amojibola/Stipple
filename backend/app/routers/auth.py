@@ -1,4 +1,5 @@
 import hashlib
+import json
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -10,7 +11,7 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db import get_db
+from app.db import get_db, AsyncSessionLocal
 from app.models.email_token import EmailToken
 from app.models.user import User
 from app.schemas.auth import (
@@ -36,10 +37,36 @@ from app.services.auth import (
     verify_password,
 )
 from app.services.email import send_password_reset_email, send_verification_email
+from app.models.audit_log import AuditLog
 
 log = structlog.get_logger()
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
+
+
+async def _audit(
+    event_type: str,
+    user_id=None,
+    ip_address: str | None = None,
+    metadata: dict | None = None,
+) -> None:
+    meta = metadata or {}
+    try:
+        if len(json.dumps(meta)) > 1024:
+            meta = {"oversized": True}
+    except Exception:
+        meta = {}
+    try:
+        async with AsyncSessionLocal() as session:
+            session.add(AuditLog(
+                user_id=user_id,
+                event_type=event_type,
+                ip_address=ip_address,
+                log_metadata=meta,
+            ))
+            await session.commit()
+    except Exception:
+        log.error("audit_log_write_failed", event_type=event_type)
 
 _FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:8080")
 
@@ -118,6 +145,7 @@ async def register(
         )
 
     log.info("user_registered", user_id=str(user.id))
+    await _audit("user_registered", user_id=user.id)
 
     try:
         await send_verification_email(data.email, raw_token, _FRONTEND_URL)
@@ -163,6 +191,7 @@ async def verify_email(
         .execution_options(synchronize_session=False)
     )
     await db.commit()
+    await _audit("email_verified", user_id=user_id)
 
     log.info("email_verified", user_id=str(user_id))
     return {"message": "Email verified successfully. You can now log in."}
@@ -186,8 +215,8 @@ async def login(
 
     if user is None or not verify_password(data.password, user.password_hash):
         log.warning("login_failed_invalid_credentials")
-        # Only increment failure counter when authentication actually fails.
         await record_login_failure(client_ip, redis)
+        await _audit("login_failed", ip_address=client_ip)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={"error": "invalid_credentials", "message": "Invalid email or password"},
@@ -211,6 +240,7 @@ async def login(
     await store_refresh_token(redis, str(user.id), refresh_id)
 
     _set_auth_cookies(response, access_token, raw_refresh)
+    await _audit("login_success", user_id=user.id, ip_address=client_ip)
     log.info("user_login", user_id=str(user.id))
     return {"message": "Login successful"}
 
@@ -261,6 +291,7 @@ async def refresh(
     new_access = create_access_token(user_id)
 
     _set_auth_cookies(response, new_access, new_raw)
+    await _audit("token_refreshed", user_id=uuid.UUID(user_id))
     log.info("token_refreshed", user_id=user_id)
     return {"message": "Token refreshed"}
 
@@ -280,6 +311,8 @@ async def logout(
 
     _clear_auth_cookies(response)
 
+    uid = uuid.UUID(user_id) if user_id else None
+    await _audit("user_logout", user_id=uid, ip_address=request.client.host if request.client else None)
     if user_id:
         log.info("user_logout", user_id=user_id)
     return {"message": "Logged out successfully"}
@@ -304,6 +337,7 @@ async def forgot_password(
                 expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
             ))
             await db.commit()
+            await _audit("password_reset_requested", user_id=user.id)
             log.info("password_reset_requested", user_id=str(user.id))
             await send_password_reset_email(data.email, raw_token, _FRONTEND_URL)
     except Exception as exc:
@@ -350,6 +384,7 @@ async def reset_password(
         .execution_options(synchronize_session=False)
     )
     await db.commit()
+    await _audit("password_reset_completed", user_id=user_id)
 
     log.info("password_reset_completed", user_id=str(user_id))
     return {"message": "Password reset successfully. You can now log in with your new password."}

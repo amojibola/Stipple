@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "Architecture/Stipple App - Current Status and Layer Tracker.md",
+                "file": "Prompts/Prompt - Current Project Status Block.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "Stipple App - Current Status and Layer Tracker"
+              "title": "Prompt - Current Project Status Block"
             }
           }
         ]
@@ -94,7 +94,7 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "Architecture/Stipple App - Current Status and Layer Tracker.md",
+                "file": "Prompts/Prompt - Current Project Status Block.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -104,7 +104,7 @@
                 "unlinkedCollapsed": true
               },
               "icon": "links-coming-in",
-              "title": "Backlinks for Stipple App - Current Status and Layer Tracker"
+              "title": "Backlinks for Prompt - Current Project Status Block"
             }
           },
           {
@@ -113,12 +113,12 @@
             "state": {
               "type": "outgoing-link",
               "state": {
-                "file": "Architecture/Stipple App - Current Status and Layer Tracker.md",
+                "file": "Prompts/Prompt - Current Project Status Block.md",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               },
               "icon": "links-going-out",
-              "title": "Outgoing links from Stipple App - Current Status and Layer Tracker"
+              "title": "Outgoing links from Prompt - Current Project Status Block"
             }
           },
           {
@@ -156,13 +156,13 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "Architecture/Stipple App - Current Status and Layer Tracker.md",
+                "file": "Prompts/Prompt - Current Project Status Block.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
               },
               "icon": "lucide-list",
-              "title": "Outline of Stipple App - Current Status and Layer Tracker"
+              "title": "Outline of Prompt - Current Project Status Block"
             }
           }
         ]
@@ -185,32 +185,32 @@
   },
   "active": "53fbd356607358e6",
   "lastOpenFiles": [
-    "Architecture/Stipple App - How It Works.md",
     "Architecture/Stipple App - Current Status and Layer Tracker.md",
+    "Build Logs/Build Log - Layer 6 - Security Hardening - April 27 2026.md",
+    "Audit Reports/Audit Report - Layer 6 - Security Hardening - April 27 2026.md",
+    "Prompts/Prompt - Current Project Status Block.md",
+    "Prompts/Prompt - Claude Code Full Project Briefing.md",
+    "Decisions/Decision - Stipple Algorithm Visual Quality - Work in Progress - April 25 2026.md",
     "Architecture/Stipple App - Architecture v2 Finalized.md",
+    "Build Logs/Build Log - Layer 5 - Projects and Dashboard - April 24 2026.md",
+    "Audit Reports/Audit Report - Layer 5 - Projects and Dashboard - April 24 2026.md",
+    "Prompts/Prompt - Document Prompt for Build Log.md",
+    "Build Logs/Build Log - Layer 4 - Image Processing Pipeline - April 24 2026.md",
+    "Audit Reports/Audit Report - Layer 4 - Image Processing Pipeline - April 24 2026.md",
+    "Audit Reports/Audit Report - Layer 1 - Foundation - April 22 2026.md",
+    "Decisions/Decision - Nginx Port 8080 in Development - April 22 2026.md",
+    "Decisions/Decision - How to Interpret Audit Findings - April 23 2026.md",
+    "Decisions/Decision - Argon2id Password Hashing - April 22 2026.md",
+    "Build Logs/Build Log - Layer 1 - Foundation - April 22 2026.md",
+    "Architecture/Stipple App - How It Works.md",
+    "Build Logs/Build Log - Layer 2 - Authentication - April 23 2026.md",
+    "Build Logs/Build Log - Layer 3 - File Upload and Storage - April 23 2026.md",
     "Architecture/Prompt - Current Project Status Block.md",
     "Audit Reports/Audit Report - Layer 3 - File Upload and Storage - April 23 2026.md",
     "Prompts/Prompt - Fix Prompt for Claude Code.md",
     "Prompts/Prompt - Audit Prompt for Codex.md",
     "Prompts/Prompt - End of Session Handoff Request.md",
-    "Prompts/Prompt - Current Project Status Block.md",
-    "Prompts/Prompt - Claude Code Full Project Briefing.md",
-    "Decisions/Decision - How to Interpret Audit Findings - April 23 2026.md",
-    "Build Logs/Build Log - Layer 2 - Authentication - April 23 2026.md",
     "Audit Reports/Audit Report - Layer 2 - Authentication - April 23 2026.md",
-    "Audit Reports/Audit Report - Layer 1 - Foundation - April 22 2026.md",
-    "Decisions/Decision - Nginx Port 8080 in Development - April 22 2026.md",
-    "Prompts/Prompt - Document Prompt for Build Log.md",
-    "Build Logs/Build Log - Layer 1 - Foundation - April 22 2026.md",
-    "Welcome.md",
-    "create a link.md",
-    "Decisions/Untitled.md",
-    "Decisions/Decision - No Marketing Emails in Phase 1 - April 22 2026.md",
-    "Decisions/Decision - Progressive Delay over Account Lockout - April 22 2026.md",
-    "Decisions/Decision - ProcessPoolExecutor over ThreadPoolExecutor - April 22 2026.md",
-    "Prompts/Prompt - New Session Startup With Handoff.md",
-    "Prompts/Prompt - Instructions.md",
-    "Decisions/Decision - JWT Authentication - April 22 2026.md",
     "Prompts",
     "Audit Reports",
     "Build Logs",

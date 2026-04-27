@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sess
 from sqlalchemy.pool import NullPool
 
 # Import all models so SQLAlchemy can resolve foreign keys in the Celery worker process
+from app.models.audit_log import AuditLog
 from app.models.job import Job
 from app.models.project import Project
 from app.models.uploaded_file import UploadedFile
@@ -255,3 +256,20 @@ async def _cleanup_expired_outputs():
         deleted=deleted,
         errors=errors,
     )
+
+
+@celery_app.task(name="app.tasks.cleanup_old_audit_logs", acks_late=True)
+def cleanup_old_audit_logs():
+    asyncio.run(_cleanup_old_audit_logs())
+
+
+async def _cleanup_old_audit_logs():
+    from sqlalchemy import delete
+    cutoff = datetime.now(timezone.utc) - timedelta(days=90)
+    async with _TaskSession() as session:
+        result = await session.execute(
+            delete(AuditLog).where(AuditLog.created_at < cutoff)
+        )
+        deleted = result.rowcount
+        await session.commit()
+    log.info("audit_log_cleanup_complete", deleted=deleted)

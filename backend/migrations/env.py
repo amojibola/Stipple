@@ -18,6 +18,7 @@ from app.models.user_quota import UserQuota  # noqa: F401
 from app.models.uploaded_file import UploadedFile  # noqa: F401
 from app.models.project import Project  # noqa: F401
 from app.models.job import Job  # noqa: F401
+from app.models.audit_log import AuditLog  # noqa: F401
 
 config = context.config
 
