@@ -4,21 +4,17 @@
     "type": "split",
     "children": [
       {
-        "id": "49e8c0d70e03f8d2",
+        "id": "df67e8f2a04658f5",
         "type": "tabs",
         "children": [
           {
-            "id": "53fbd356607358e6",
+            "id": "2ca68034fc6ec6e9",
             "type": "leaf",
             "state": {
-              "type": "markdown",
-              "state": {
-                "file": "Prompts/Prompt - Current Project Status Block.md",
-                "mode": "source",
-                "source": false
-              },
+              "type": "empty",
+              "state": {},
               "icon": "lucide-file",
-              "title": "Prompt - Current Project Status Block"
+              "title": "New tab"
             }
           }
         ]
@@ -94,7 +90,6 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "Prompts/Prompt - Current Project Status Block.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -104,7 +99,7 @@
                 "unlinkedCollapsed": true
               },
               "icon": "links-coming-in",
-              "title": "Backlinks for Prompt - Current Project Status Block"
+              "title": "Backlinks"
             }
           },
           {
@@ -113,12 +108,11 @@
             "state": {
               "type": "outgoing-link",
               "state": {
-                "file": "Prompts/Prompt - Current Project Status Block.md",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               },
               "icon": "links-going-out",
-              "title": "Outgoing links from Prompt - Current Project Status Block"
+              "title": "Outgoing links"
             }
           },
           {
@@ -156,13 +150,12 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "Prompts/Prompt - Current Project Status Block.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
               },
               "icon": "lucide-list",
-              "title": "Outline of Prompt - Current Project Status Block"
+              "title": "Outline"
             }
           }
         ]
@@ -183,20 +176,22 @@
       "bases:Create new base": false
     }
   },
-  "active": "53fbd356607358e6",
+  "active": "2ca68034fc6ec6e9",
   "lastOpenFiles": [
+    "Architecture/Stipple App - Architecture v2 Finalized.md",
+    "2026-04-27.md",
+    "Untitled.canvas",
     "Architecture/Stipple App - Current Status and Layer Tracker.md",
     "Build Logs/Build Log - Layer 6 - Security Hardening - April 27 2026.md",
+    "Audit Reports/Audit Report - Layer 5 - Projects and Dashboard - April 24 2026.md",
+    "Audit Reports/Audit Report - Layer 4 - Image Processing Pipeline - April 24 2026.md",
     "Audit Reports/Audit Report - Layer 6 - Security Hardening - April 27 2026.md",
     "Prompts/Prompt - Current Project Status Block.md",
     "Prompts/Prompt - Claude Code Full Project Briefing.md",
     "Decisions/Decision - Stipple Algorithm Visual Quality - Work in Progress - April 25 2026.md",
-    "Architecture/Stipple App - Architecture v2 Finalized.md",
     "Build Logs/Build Log - Layer 5 - Projects and Dashboard - April 24 2026.md",
-    "Audit Reports/Audit Report - Layer 5 - Projects and Dashboard - April 24 2026.md",
     "Prompts/Prompt - Document Prompt for Build Log.md",
     "Build Logs/Build Log - Layer 4 - Image Processing Pipeline - April 24 2026.md",
-    "Audit Reports/Audit Report - Layer 4 - Image Processing Pipeline - April 24 2026.md",
     "Audit Reports/Audit Report - Layer 1 - Foundation - April 22 2026.md",
     "Decisions/Decision - Nginx Port 8080 in Development - April 22 2026.md",
     "Decisions/Decision - How to Interpret Audit Findings - April 23 2026.md",
@@ -209,8 +204,6 @@
     "Audit Reports/Audit Report - Layer 3 - File Upload and Storage - April 23 2026.md",
     "Prompts/Prompt - Fix Prompt for Claude Code.md",
     "Prompts/Prompt - Audit Prompt for Codex.md",
-    "Prompts/Prompt - End of Session Handoff Request.md",
-    "Audit Reports/Audit Report - Layer 2 - Authentication - April 23 2026.md",
     "Prompts",
     "Audit Reports",
     "Build Logs",
